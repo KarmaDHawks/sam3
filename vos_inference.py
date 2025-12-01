@@ -124,6 +124,7 @@ def vos_inference(
     score_thresh=0.0,
     use_all_masks=False,
     per_obj_png_file=False,
+    offload_video_to_cpu=False,
 ):
     """Run VOS inference on a single video with the given SAM 3 predictor."""
     # load the video frames and initialize the inference state on this video
@@ -137,13 +138,17 @@ def vos_inference(
     
     # Initialize inference state with video directory
     # SAM 3 will automatically load frames from the directory
-    inference_state = predictor.init_state(video_path=video_dir)
+    inference_state = predictor.init_state(
+        video_path=video_dir,
+        offload_video_to_cpu=offload_video_to_cpu
+    )
     #predictor.clear_all_points_in_video(inference_state)
     height = inference_state["video_height"]
     width = inference_state["video_width"]
     input_palette = None
 
     print(f"Video dimensions: {width}x{height}, {len(frame_names)} frames")
+    print(f"offload_video_to_cpu: {offload_video_to_cpu}")
 
     # fetch mask inputs from input_mask_dir (either only mask for the first frame, or all available masks)
     if not use_all_masks:
@@ -324,6 +329,12 @@ def main():
         help="whether to track objects that appear later in the video (i.e. not on the first frame; "
         "some VOS datasets like LVOS or YouTube-VOS don't have all objects appearing in the first frame)",
     )
+    parser.add_argument(
+        "--offload_video_to_cpu",
+        action="store_true",
+        help="whether to offload video frames to CPU memory to save GPU memory "
+        "(default: False, keep frames on GPU; set this flag to offload frames to CPU with minimal overhead)",
+    )
     args = parser.parse_args()
 
     # Load SAM 3 model
@@ -339,6 +350,8 @@ def main():
         print(
             "using only the first frame's mask in input_mask_dir as input to the SAM 3 model"
         )
+    
+    print(f"offload_video_to_cpu: {args.offload_video_to_cpu}")
     
     # if a video list file is provided, read the video names from the file
     # (otherwise, we use all subdirectories in base_video_dir)
@@ -365,6 +378,7 @@ def main():
                 score_thresh=args.score_thresh,
                 use_all_masks=args.use_all_masks,
                 per_obj_png_file=args.per_obj_png_file,
+                offload_video_to_cpu=args.offload_video_to_cpu,
             )
 
     print(
