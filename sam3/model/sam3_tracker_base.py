@@ -23,6 +23,40 @@ except ModuleNotFoundError:
 # a large negative value as a placeholder score for missing objects
 NO_OBJ_SCORE = -1024.0
 
+import torchvision.transforms as T
+from PIL import Image
+import h5py
+import os
+import numpy as np
+
+def load_red_mask_as_binary(gt_path, device, image_size):
+    """
+    Replica ESATTA dello script offline:
+    - nero  -> 0
+    - rosso -> 255
+    Output: [1, 1, H, W] float {0,1}
+    """
+
+    img = Image.open(gt_path).convert("RGB")
+    mask = np.array(img)
+
+    r = mask[:, :, 0]
+    g = mask[:, :, 1]
+    b = mask[:, :, 2]
+
+    red_pixels = (r > 0) & (g == 0) & (b == 0)
+
+    binary_mask = np.zeros((mask.shape[0], mask.shape[1]), dtype=np.uint8)
+    binary_mask[red_pixels] = 255
+
+    # torch conversion
+    gt = torch.from_numpy(binary_mask).float() / 255.0  # [H, W] ∈ {0,1}
+    gt = gt.unsqueeze(0).unsqueeze(0)                   # [1, 1, H, W]
+
+    if gt.shape[-2:] != (image_size, image_size):
+        gt = F.interpolate(gt, size=(image_size, image_size), mode="nearest")
+
+    return gt.to(device)
 
 class Sam3TrackerBase(torch.nn.Module):
     def __init__(
@@ -74,6 +108,10 @@ class Sam3TrackerBase(torch.nn.Module):
         mf_threshold=0.01,
     ):
         super().__init__()
+
+        self.save_features = False
+        self.feature_save_dir = "/media/TBData/marco/test/SAM3_features/train"
+        self.is_clean_pass = False  # oppure False per la versione noisy
 
         # Part 1: the image backbone
         self.backbone = backbone
@@ -154,6 +192,20 @@ class Sam3TrackerBase(torch.nn.Module):
         self.compile_all_components = compile_all_components
         if self.compile_all_components:
             self._compile_all_components()
+
+        self.use_feature_corrector = False  # o False se vuoi disattivarlo
+        if self.use_feature_corrector:
+            print('Using Architecture for correction')
+            from sam3.model.feature_corrector_model import get_mlp_corrector
+            checkpoint = torch.load("/home/marco/Desktop/SAM3-exp/sam3/FeatureCorrector_Training/best_checkpoint.pt", 
+                                    map_location="cpu")
+
+            self.mlp_corrector = get_mlp_corrector()
+            self.mlp_corrector.load_state_dict(checkpoint["mlp_corrector"])
+            self.mlp_corrector.eval()
+        else:
+            print('Struttura normale')
+            self.mlp_corrector = None
 
     @property
     def device(self):
@@ -981,6 +1033,21 @@ class Sam3TrackerBase(torch.nn.Module):
                 track_in_reverse=track_in_reverse,
                 use_prev_mem_frame=use_prev_mem_frame,
             )
+
+            # ===== Saving Features =====
+            if getattr(self, "save_features", False):
+                video_name = output_dict.get("video_name", "unknown_video")
+                feature_type = "clean" if getattr(self, "is_clean_pass", False) else "noisy"
+                save_dir = os.path.join(self.feature_save_dir, feature_type, video_name)
+                os.makedirs(save_dir, exist_ok=True)
+                
+                frame_name = f"{frame_idx:05d}.h5"
+                save_path = os.path.join(save_dir, frame_name)
+                
+                with h5py.File(save_path, "w") as f:
+                    f.create_dataset("pix_feat", data=pix_feat_with_mem.cpu().half().numpy(), compression="gzip")
+            # ===== END =====
+
             # apply SAM-style segmentation head
             # here we might feed previously predicted low-res SAM mask logits into the SAM mask decoder,
             # e.g. in demo where such logits come from earlier interaction instead of correction sampling
@@ -998,6 +1065,38 @@ class Sam3TrackerBase(torch.nn.Module):
                 high_res_features=high_res_features,
                 multimask_output=multimask_output,
             )
+
+            # ===== Saving datas for image reconstruction =====
+            if getattr(self, "save_features", False) and not getattr(self, "is_clean_pass", False):
+                video_name = output_dict.get("video_name", "unknown_video")
+                feature_type = "noisy"
+                save_dir = os.path.join(self.feature_save_dir, feature_type, video_name, "inputs")
+                os.makedirs(save_dir, exist_ok=True)
+
+                frame_name = f"{frame_idx:05d}.h5"
+                save_path = os.path.join(save_dir, frame_name)
+
+                with h5py.File(save_path, "w") as f:
+                    if point_inputs is not None:
+                        arr = point_inputs.cpu()
+                        if arr.dtype == torch.bfloat16 or arr.dtype == torch.float32:
+                            arr = arr.to(torch.float16)
+                        arr = arr.numpy()
+                        f.create_dataset("point_inputs", data=arr, compression="gzip")
+                    if mask_inputs is not None:
+                        arr = mask_inputs.cpu()
+                        if arr.dtype == torch.bfloat16 or arr.dtype == torch.float32:
+                            arr = arr.to(torch.float16)
+                        arr = arr.numpy()
+                        f.create_dataset("mask_inputs", data=arr, compression="gzip")
+                    if high_res_features is not None:
+                        for i, feat in enumerate(high_res_features):
+                            arr = feat.cpu()
+                            if arr.dtype == torch.bfloat16 or arr.dtype == torch.float32:
+                                arr = arr.to(torch.float16)
+                            arr = arr.numpy()
+                            f.create_dataset(f"high_res_features_{i}", data=arr, compression="gzip")
+            # ===== END =====
         (
             _,
             high_res_multimasks,
@@ -1022,6 +1121,33 @@ class Sam3TrackerBase(torch.nn.Module):
             # Only add this in inference (to avoid unused param in activation checkpointing;
             # it's mainly used in the demo to encode spatial memories w/ consolidated masks)
             current_out["object_score_logits"] = object_score_logits
+
+        # ===== Forcing GT mask as input =====
+        if getattr(self, "is_clean_pass", False) and getattr(self, "save_features", False):
+            #print("high_res_masks shape:", high_res_masks.shape, "min:", high_res_masks.min().item(), "max:", high_res_masks.max().item())
+            # Loading of the GT mask for the current frame
+            video_name = output_dict.get("video_name", "unknown_video")
+            frame_names = output_dict.get("frame_names", None)
+            
+            # Use the real name of the ordered list
+            if frame_names is not None and frame_idx < len(frame_names):
+                frame_name_no_ext = frame_names[frame_idx]
+                frame_name = f"{frame_name_no_ext}.png"
+            else:
+                # Fallback to the old method if the frame isn't available
+                frame_name = f"{frame_idx:05d}.png"  # 5 cifre, es: 00001.png
+            
+            gt_dir = os.path.join('/media/TBData2/data/VOST/SingleObject/Annotations', video_name)
+            gt_path = os.path.join(gt_dir, frame_name)
+            
+            # Load the GT mask only if the frame exist
+            if os.path.exists(gt_path):
+                gt_mask = load_red_mask_as_binary(gt_path, high_res_masks.device, high_res_masks.shape[-1])
+                gt_mask_logits = gt_mask * 20.0 + -10.0
+                high_res_masks = gt_mask_logits
+            else:
+                print(f"[WARN] GT mask not found: {gt_path}")
+        # ===== END =====
 
         # Finally run the memory encoder on the predicted mask to encode
         # it into a new memory feature (that can be used in future frames)

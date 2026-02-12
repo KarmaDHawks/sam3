@@ -143,6 +143,10 @@ def vos_inference(
         offload_video_to_cpu=offload_video_to_cpu
     )
     predictor.clear_all_points_in_video(inference_state)
+
+    inference_state["video_name"] = video_name
+    inference_state["frame_names"] = frame_names
+
     height = inference_state["video_height"]
     width = inference_state["video_width"]
     input_palette = None

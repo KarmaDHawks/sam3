@@ -1072,6 +1072,9 @@ class Sam3TrackerPredictor(Sam3TrackerBase):
             feat_sizes,
         ) = self._get_image_feature(inference_state, frame_idx, batch_size)
 
+        output_dict["video_name"] = inference_state["video_name"]
+        output_dict["frame_names"] = inference_state["frame_names"]
+
         # point and mask should not appear as input simultaneously on the same frame
         assert point_inputs is None or mask_inputs is None
         current_out = self.track_step(

@@ -153,3 +153,4 @@ Thumbs.db
 *.vocab
 
 outputs/
+FeatureCorrector_Training/
