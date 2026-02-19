@@ -110,7 +110,7 @@ class Sam3TrackerBase(torch.nn.Module):
         super().__init__()
 
         self.save_features = False
-        self.feature_save_dir = "/media/TBData/marco/test/SAM3_features/train"
+        self.feature_save_dir = "/media/TBData/marco/Projects/VOST/features/ft_ECCV/SAM3_DAVIS_17/val"
         self.is_clean_pass = False  # oppure False per la versione noisy
 
         # Part 1: the image backbone
@@ -1137,7 +1137,7 @@ class Sam3TrackerBase(torch.nn.Module):
                 # Fallback to the old method if the frame isn't available
                 frame_name = f"{frame_idx:05d}.png"  # 5 cifre, es: 00001.png
             
-            gt_dir = os.path.join('/media/TBData2/data/VOST/SingleObject/Annotations', video_name)
+            gt_dir = os.path.join('/media/TBData2/data/DAVIS/Annotations/480p', video_name)
             gt_path = os.path.join(gt_dir, frame_name)
             
             # Load the GT mask only if the frame exist

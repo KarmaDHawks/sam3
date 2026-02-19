@@ -21,7 +21,7 @@ CLASS_COLORS = {
 DRAW_ORDER = [2, 0, 1]
 
 # Spessore bbox (più sottile)
-BBOX_THICKNESS = 1
+BBOX_THICKNESS = 2
 
 # -----------------------------
 # FUNZIONE PRINCIPALE
@@ -107,9 +107,9 @@ def visualize_yolo_bboxes(image_path, yolo_txt_path, output_path):
 # ESEMPIO DI USO
 # -----------------------------
 if __name__ == "__main__":
-    image_path = "/media/TBData/marco/D3_230415_1052_1.png"
-    yolo_txt_path = "/media/TBData/marco/Projects/HangCon/Dataset/HangCon/test/labels/YOLO/labels_yolo_exp3/D3_230415_1052_1.txt"
-    output_path = "/home/marco/Desktop/SAM3-exp/HangCon_qualitative/D3_230415_1052_1.png"
+    image_path = "/home/marco/Desktop/SAM3-exp/HangCon_qualitative/S_230331_1236_0.png"
+    yolo_txt_path = "/media/TBData/marco/Projects/HangCon/Dataset/HangCon/test/labels/YOLO/labels_yolo_exp3/S_230331_1236_0.txt"
+    output_path = "/home/marco/Desktop/SAM3-exp/HangCon_qualitative/S_230331_1236_0.png"
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 

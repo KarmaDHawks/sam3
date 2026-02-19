@@ -59,9 +59,9 @@ def draw_bbox_on_image(image_path: Path, bbox, out_path: Path,
 
 def main():
     # ====== MODIFICA QUI ======
-    mask_path  = Path("/media/TBData/marco/Projects/HangCon/outputs/SAM3_HangCon_Prompt/hanging_object_with_rope/score_0_5/mask/D3_230415_1052_1.png")   # <-- tua maschera
-    image_path = Path("/media/TBData/marco/D3_230415_1052_1.png")   # <-- immagine RGB
-    out_path   = Path("/media/TBData/marco/D3_230415_1052_1.png")
+    mask_path  = Path("/media/TBData/marco/Projects/HangCon/outputs/SAM3_HangCon_Prompt/hanging_object_with_rope/score_0_5/mask/S_230331_1236_0.png")   # <-- tua maschera
+    image_path = Path("/home/marco/Desktop/SAM3-exp/HangCon_qualitative/S_230331_1236_0.png")   # <-- immagine RGB
+    out_path   = Path("/home/marco/Desktop/SAM3-exp/HangCon_qualitative/S_230331_1236_0.png")
 
     # --- load mask ---
     mask, shape = load_mask(mask_path)
@@ -75,7 +75,7 @@ def main():
 
     # --- draw and save ---
     draw_bbox_on_image(image_path, bbox, out_path,
-                       color=(255, 255, 0), width=1)
+                       color=(255, 255, 0), width=3)
 
     print(f"Saved image with bbox to: {out_path}")
 
