@@ -197,7 +197,7 @@ class Sam3TrackerBase(torch.nn.Module):
         if self.use_feature_corrector:
             print('Using Architecture for correction')
             from sam3.model.feature_corrector_model import get_mlp_corrector
-            checkpoint = torch.load("/home/marco/Desktop/SAM3-exp/sam3/FeatureCorrector_Training/best_checkpoint.pt", 
+            checkpoint = torch.load("/media/TBData/marco/Projects/VOST/FeatureCorrector_Training/ECCV/SAM3TC/CNN/3x3/MSE/IoU/delta_5/best_checkpoint.pt", 
                                     map_location="cpu")
 
             self.mlp_corrector = get_mlp_corrector()
