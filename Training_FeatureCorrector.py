@@ -19,8 +19,8 @@ TRAIN_NOISY_DIR = '/media/TBData/marco/Projects/VOST/features/ft_ICIP/SAM3_featu
 TRAIN_CLEAN_DIR = '/media/TBData/marco/Projects/VOST/features/ft_ICIP/SAM3_features/train/clean'
 VAL_NOISY_DIR = "/media/TBData/marco/Projects/VOST/features/ft_ICIP/SAM3_features/val/noisy"
 VAL_CLEAN_DIR = "/media/TBData/marco/Projects/VOST/features/ft_ICIP/SAM3_features/val/clean"
-SAVE_DIR = '/media/TBData/marco/Projects/VOST/FeatureCorrector_Training/ECCV/SAM3TC/CNN/3x3/MSE/IoU/delta_5'
-mask_save_dir = '/media/TBData/marco/Projects/VOST/FeatureCorrector_Training/ECCV/SAM3TC/CNN/3x3/MSE/IoU/delta_5/masks'
+SAVE_DIR = '/media/TBData/marco/Projects/VOST/FeatureCorrector_Training/ECCV/SAM3TC/test_MSE'
+mask_save_dir = '/media/TBData/marco/Projects/VOST/FeatureCorrector_Training/ECCV/SAM3TC/test_MSE/masks'
 DEVICE = 'cuda:0'
 BATCH_SIZE = 8
 EPOCHS = 10
@@ -39,9 +39,9 @@ class FeatureCorrector(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Conv2d(C, hidden, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
             nn.Conv2d(hidden, hidden, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
             nn.Conv2d(hidden, C, kernel_size=3, padding=1),
         )
 
@@ -256,14 +256,13 @@ with open(metrics_csv_path, mode='a' if start_epoch > 0 else 'w', newline='') as
                 # - mask_inputs: None (non abbiamo maschere di input)
                 # - high_res_features: lista di feature opzionali ✓ (abbiamo high_res)
                 # - multimask_output: True/False
-                with torch.no_grad():
-                    sam_outputs = sam3_tracker._forward_sam_heads(
-                        backbone_features=pix_feat,
-                        point_inputs=None,
-                        mask_inputs=None,
-                        high_res_features=high_res,
-                        multimask_output=True
-                    )
+                sam_outputs = sam3_tracker._forward_sam_heads(
+                    backbone_features=pix_feat,
+                    point_inputs=None,
+                    mask_inputs=None,
+                    high_res_features=high_res,
+                    multimask_output=True
+                )
                 
                 # sam_outputs è una tupla: 
                 # (low_res_multimasks, high_res_multimasks, ious, low_res_masks, high_res_masks, obj_ptr, object_score_logits)
@@ -433,4 +432,4 @@ torch.save({
     "mlp_corrector": model.state_dict(),
 }, os.path.join(SAVE_DIR, "mlp_corrector_final.pt"))
 
-print("Training completato!")
+print("✅ Training completato!")
