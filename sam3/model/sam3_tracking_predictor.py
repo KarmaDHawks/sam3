@@ -230,10 +230,10 @@ class Sam3TrackerPredictor(Sam3TrackerBase):
                     "(please use clear_old_points=True instead)"
                 )
             if not isinstance(box, torch.Tensor):
-                box = torch.tensor(box, dtype=torch.float32, device=points.device)
+                box = torch.tensor(box, dtype=torch.float32, device=points.device) 
             box_coords = box.reshape(1, 2, 2)
             box_labels = torch.tensor([2, 3], dtype=torch.int32, device=labels.device)
-            box_labels = box_labels.reshape(1, 2)
+            box_labels = box_labels.reshape(1, 2)     
             points = torch.cat([box_coords, points], dim=1)
             labels = torch.cat([box_labels, labels], dim=1)
 
@@ -247,7 +247,7 @@ class Sam3TrackerPredictor(Sam3TrackerBase):
         point_inputs = concat_points(point_inputs, points, labels)
 
         point_inputs_per_frame[frame_idx] = point_inputs
-        mask_inputs_per_frame.pop(frame_idx, None)
+        mask_inputs_per_frame.pop(frame_idx, None)  
         # If this frame hasn't been tracked before, we treat it as an initial conditioning
         # frame, meaning that the inputs points are to generate segments on this frame without
         # using any memory from other frames, like in SAM. Otherwise (if it has been tracked),
@@ -287,7 +287,8 @@ class Sam3TrackerPredictor(Sam3TrackerBase):
             logging.warning(
                 f"Too many points ({num_points}) are provided on frame {frame_idx}. Only "
                 f"the first {num_first} points and the last {num_last} points will be used."
-            )
+            )  
+
         # Get any previously predicted mask logits on this object and feed it along with
         # the new clicks into the SAM mask decoder when `self.iter_use_prev_mask_pred=True`.
         prev_sam_mask_logits = None
@@ -320,7 +321,7 @@ class Sam3TrackerPredictor(Sam3TrackerBase):
             run_mem_encoder=False,
             prev_sam_mask_logits=prev_sam_mask_logits,
             use_prev_mem_frame=use_prev_mem_frame,
-        )
+        )        
         # Add the output to the output dict (to be used as future memory)
         obj_temp_output_dict[storage_key][frame_idx] = current_out
 
@@ -333,9 +334,13 @@ class Sam3TrackerPredictor(Sam3TrackerBase):
             run_mem_encoder=False,
             consolidate_at_video_res=True,
         )
+        
+        if box is not None:
+            foreground_count = (consolidated_out['pred_masks_video_res'] > 0).sum().item()
+        
         _, video_res_masks = self._get_orig_video_res_output(
             inference_state, consolidated_out["pred_masks_video_res"]
-        )
+        )        
         low_res_masks = None  # not needed by the demo
         return frame_idx, obj_ids, low_res_masks, video_res_masks
 
@@ -1070,6 +1075,25 @@ class Sam3TrackerPredictor(Sam3TrackerBase):
             current_vision_pos_embeds,
             feat_sizes,
         ) = self._get_image_feature(inference_state, frame_idx, batch_size)
+
+        # IMPORTANT: Normalize point_inputs coordinates to the processed image resolution
+        # The image is resized to self.image_size, but the points might be in video resolution
+        if point_inputs is not None and point_inputs.get("point_coords") is not None:
+            image_H, image_W = image.shape[-2:]
+            video_H = inference_state["video_height"]
+            video_W = inference_state["video_width"]
+            
+            # Check if coordinates need normalization
+            if (image_H, image_W) != (video_H, video_W):
+                coords = point_inputs["point_coords"]
+                # Normalize coordinates from video resolution to image resolution
+                scale_h = image_H / video_H
+                scale_w = image_W / video_W
+                
+                # Apply scaling
+                point_inputs["point_coords"] = coords * torch.tensor(
+                    [scale_w, scale_h], dtype=coords.dtype, device=coords.device
+                )
 
         # point and mask should not appear as input simultaneously on the same frame
         assert point_inputs is None or mask_inputs is None
