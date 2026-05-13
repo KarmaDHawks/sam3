@@ -1072,6 +1072,25 @@ class Sam3TrackerPredictor(Sam3TrackerBase):
             feat_sizes,
         ) = self._get_image_feature(inference_state, frame_idx, batch_size)
 
+        # IMPORTANT: Normalize point_inputs coordinates to the processed image resolution
+        # The image is resized to self.image_size, but the points might be in video resolution
+        if point_inputs is not None and point_inputs.get("point_coords") is not None:
+            image_H, image_W = image.shape[-2:]
+            video_H = inference_state["video_height"]
+            video_W = inference_state["video_width"]
+            
+            # Check if coordinates need normalization
+            if (image_H, image_W) != (video_H, video_W):
+                coords = point_inputs["point_coords"]
+                # Normalize coordinates from video resolution to image resolution
+                scale_h = image_H / video_H
+                scale_w = image_W / video_W
+                
+                # Apply scaling
+                point_inputs["point_coords"] = coords * torch.tensor(
+                    [scale_w, scale_h], dtype=coords.dtype, device=coords.device
+                )
+
         # point and mask should not appear as input simultaneously on the same frame
         assert point_inputs is None or mask_inputs is None
         current_out = self.track_step(

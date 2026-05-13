@@ -98,7 +98,7 @@ run_inference() {
 # ============================================================================
 
 # Output directory for all masks
-OUTPUT_BASE="/media/TBData/marco/Projects/SAMem/SAM3_base"
+OUTPUT_BASE="/media/TBData/marco/Projects/SAMem/SAM3_base/masks"
 mkdir -p "${OUTPUT_BASE}"
 
 echo "=============================================================================
@@ -121,7 +121,7 @@ if [ -d "${TREK150_DIR}" ]; then
     run_inference "TREK-150" \
         "tools/trek150_inference.py" \
         --trek150_dir "/media/TBDataNAS/Visual Object Tracking/TREK-150-annotations-w-imgs" \
-        --output_mask_dir "/media/TBData/marco/Projects/SAMem/SAM3_base/TREK150" \
+        --output_mask_dir "/media/TBData/marco/Projects/SAMem/SAM3_base/masks/TREK150" \
         --offload_video_to_cpu 
         "${TREK150_OUTPUT}"
 else
