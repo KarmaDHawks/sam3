@@ -134,7 +134,7 @@ fi
 # ============================================================================
 log_msg "${BLUE}[2/5]${NC}" "EgoExo4D Dataset"
 
-EGOEXO4D_FRAMES="/media/TBDataNAS/Egocentric Vision/EgoExo4D/v2/frames/val"  # UPDATE THIS
+EGOEXO4D_FRAMES="/media/TBData4/data/EgoExo4d/frames/val"  # UPDATE THIS
 EGOEXO4D_ANNO="/media/TBDataNAS/Egocentric Vision/EgoExo4D/v2/annotations/vot_ego_exo/sot/val"  # UPDATE THIS
 EGOEXO4D_OUTPUT="${OUTPUT_BASE}/VISTA"
 
