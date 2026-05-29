@@ -119,7 +119,7 @@ TREK150_OUTPUT="${OUTPUT_BASE}/TREK150"
 
 if [ -d "${TREK150_DIR}" ]; then
     run_inference "TREK-150" \
-        "tools/trek150_inference.py" \
+        "tools/inference/trek150_inference.py" \
         --trek150_dir "/media/TBDataNAS/Visual Object Tracking/TREK-150-annotations-w-imgs" \
         --output_mask_dir "/media/TBData/marco/Projects/SAMem/SAM3_base/masks/TREK150" \
         --offload_video_to_cpu 
@@ -134,17 +134,18 @@ fi
 # ============================================================================
 log_msg "${BLUE}[2/5]${NC}" "EgoExo4D Dataset"
 
-EGOEXO4D_FRAMES="/media/TBDataNAS/Egocentric Vision/EgoExo4D/v2/frames/val"  # UPDATE THIS
+EGOEXO4D_FRAMES="/media/TBData4/data/EgoExo4d/frames/val"  # UPDATE THIS
 EGOEXO4D_ANNO="/media/TBDataNAS/Egocentric Vision/EgoExo4D/v2/annotations/vot_ego_exo/sot/val"  # UPDATE THIS
-EGOEXO4D_OUTPUT="${OUTPUT_BASE}/VISTA"
+EGOEXO4D_OUTPUT="${OUTPUT_BASE}/VISTA_1fps"
 
 if [ -d "${EGOEXO4D_FRAMES}" ] && [ -d "${EGOEXO4D_ANNO}" ]; then
     run_inference "EgoExo4D" \
-        "tools/egoexo_inference.py" \
+        "tools/inference/egoexo_inference.py" \
         --frames_dir "${EGOEXO4D_FRAMES}"   \
         --anno_dir "${EGOEXO4D_ANNO}"   \
         --output_dir "${EGOEXO4D_OUTPUT}"   \
-        --view "ego" 
+        --view "ego" \
+        --use_frames_file
         "${EGOEXO4D_OUTPUT}"
 else
     log_msg "${YELLOW}⊘${NC}" "EgoExo4D directories not found (skipping)"
@@ -162,7 +163,7 @@ EGOTRACKS_OUTPUT="${OUTPUT_BASE}/EgoTracks"
 
 if [ -d "${EGOTRACKS_FRAMES}" ] && [ -d "${EGOTRACKS_ANNO}" ]; then
     run_inference "EgoTracks" \
-        "tools/egotracks_inference.py" \
+        "tools/inference/egotracks_inference.py" \
         --frames_dir "${EGOTRACKS_FRAMES}" \
         --anno_dir "${EGOTRACKS_ANNO}"  \
         --output_dir "${EGOTRACKS_OUTPUT}"  \
@@ -184,7 +185,7 @@ IT3DEGO_OUTPUT="${OUTPUT_BASE}/IT3DEgo"
 
 if [ -d "${IT3DEGO_FRAMES}" ] && [ -d "${IT3DEGO_ANNO}" ]; then
     run_inference "IT3DEgo" \
-        "tools/it3dego_inference.py" \
+        "tools/inference/it3dego_inference.py" \
         --frames_root "${IT3DEGO_FRAMES}"  \
         --ann_root "${IT3DEGO_ANNO}"    \
         --output_dir "${IT3DEGO_OUTPUT}"    \
