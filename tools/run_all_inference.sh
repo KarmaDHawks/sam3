@@ -115,13 +115,13 @@ Timestamp: ${TIMESTAMP}
 log_msg "${BLUE}[1/5]${NC}" "TREK-150 Dataset"
 
 TREK150_DIR="/media/TBDataNAS/Visual Object Tracking/TREK-150-annotations-w-imgs"  # UPDATE THIS
-TREK150_OUTPUT="${OUTPUT_BASE}/TREK150"
+TREK150_OUTPUT="${OUTPUT_BASE}/TREK150v2"
 
 if [ -d "${TREK150_DIR}" ]; then
     run_inference "TREK-150" \
         "tools/trek150_inference.py" \
         --trek150_dir "/media/TBDataNAS/Visual Object Tracking/TREK-150-annotations-w-imgs" \
-        --output_mask_dir "/media/TBData/marco/Projects/SAMem/SAM3.1_base/masks/TREK150" \
+        --output_mask_dir "/media/TBData/marco/Projects/SAMem/SAM3.1_base/masks/TREK150v2" \
         --offload_video_to_cpu 
         "${TREK150_OUTPUT}"
 else
@@ -157,7 +157,7 @@ fi
 log_msg "${BLUE}[3/5]${NC}" "EgoTracks Dataset"
 
 EGOTRACKS_FRAMES="/media/TBDataNAS/Egocentric Vision/Ego4D/v2/clips_frames_val/frames"
-EGOTRACKS_ANNO="/media/TBData/marco/Projects/EgoTracks/Dataset/egotracks-annotations"
+EGOTRACKS_ANNO="/home/zaira/Projects/sam2/TREK-150-toolkit/toolkit/datasets/egotracks-annotations"
 EGOTRACKS_OUTPUT="${OUTPUT_BASE}/EgoTracks"
 
 if [ -d "${EGOTRACKS_FRAMES}" ] && [ -d "${EGOTRACKS_ANNO}" ]; then
