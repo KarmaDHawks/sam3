@@ -136,7 +136,7 @@ log_msg "${BLUE}[2/5]${NC}" "EgoExo4D Dataset"
 
 EGOEXO4D_FRAMES="/media/TBData4/data/EgoExo4d/frames/val"  # UPDATE THIS
 EGOEXO4D_ANNO="/media/TBDataNAS/Egocentric Vision/EgoExo4D/v2/annotations/vot_ego_exo/sot/val"  # UPDATE THIS
-EGOEXO4D_OUTPUT="${OUTPUT_BASE}/VISTA"
+EGOEXO4D_OUTPUT="${OUTPUT_BASE}/VISTA-1fps"
 
 if [ -d "${EGOEXO4D_FRAMES}" ] && [ -d "${EGOEXO4D_ANNO}" ]; then
     run_inference "EgoExo4D" \
@@ -144,7 +144,8 @@ if [ -d "${EGOEXO4D_FRAMES}" ] && [ -d "${EGOEXO4D_ANNO}" ]; then
         --frames_dir "${EGOEXO4D_FRAMES}"   \
         --anno_dir "${EGOEXO4D_ANNO}"   \
         --output_dir "${EGOEXO4D_OUTPUT}"   \
-        --view "ego" 
+        --view "exo" \
+        --use_frames_file 
         "${EGOEXO4D_OUTPUT}"
 else
     log_msg "${YELLOW}⊘${NC}" "EgoExo4D directories not found (skipping)"
@@ -157,7 +158,8 @@ fi
 log_msg "${BLUE}[3/5]${NC}" "EgoTracks Dataset"
 
 EGOTRACKS_FRAMES="/media/TBDataNAS/Egocentric Vision/Ego4D/v2/clips_frames_val/frames"
-EGOTRACKS_ANNO="/home/zaira/Projects/sam2/TREK-150-toolkit/toolkit/datasets/egotracks-annotations"
+EGOTRACKS_ANNO=""
+#/home/zaira/Projects/sam2/TREK-150-toolkit/toolkit/datasets/egotracks-annotations"
 EGOTRACKS_OUTPUT="${OUTPUT_BASE}/EgoTracks"
 
 if [ -d "${EGOTRACKS_FRAMES}" ] && [ -d "${EGOTRACKS_ANNO}" ]; then

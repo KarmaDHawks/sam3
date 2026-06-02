@@ -16,13 +16,17 @@ import numpy as np
 import torch
 from PIL import Image
 
+import sys
+
 from sam3.model_builder import build_sam3_video_model
 from vos_inference import save_masks_to_dir
 
 # Import EgoExo4D dataset
-import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from EgoExo4D import EgoExo4D
+
+from huggingface_hub import login
+login()
 
 # DAVIS 2017 palette for mask visualization
 DAVIS_PALETTE = b"\x00\x00\x00\x80\x00\x00\x00\x80\x00\x80\x80\x00\x00\x00\x80\x80\x00\x80\x00\x80\x80\x80\x80\x80@\x00\x00\xc0\x00\x00@\x80\x00\xc0\x80\x00@\x00\x80\xc0\x00\x80@\x80\x80\xc0\x80\x80\x00@\x00\x80@\x00\x00\xc0\x00\x80\xc0\x00\x00@\x80\x80@\x80\x00\xc0\x80\x80\xc0\x80@@\x00\xc0@\x00@\xc0\x00\xc0\xc0\x00@@\x80\xc0@\x80@\xc0\x80\xc0\xc0\x80\x00\x00@\x80\x00@\x00\x80@\x80\x80@\x00\x00\xc0\x80\x00\xc0\x00\x80\xc0\x80\x80\xc0@\x00@\xc0\x00@@\x80@\xc0\x80@@\x00\xc0\xc0\x00\xc0@\x80\xc0\xc0\x80\xc0\x00@@\x80@@\x00\xc0@\x80\xc0@\x00@\xc0\x80@\xc0\x00\xc0\xc0\x80\xc0\xc0@@@\xc0@@@\xc0@\xc0\xc0@@@\xc0\xc0@\xc0@\xc0\xc0\xc0\xc0\xc0 \x00\x00\xa0\x00\x00 \x80\x00\xa0\x80\x00 \x00\x80\xa0\x00\x80 \x80\x80\xa0\x80\x80`\x00\x00\xe0\x00\x00`\x80\x00\xe0\x80\x00`\x00\x80\xe0\x00\x80`\x80\x80\xe0\x80\x80 @\x00\xa0@\x00 \xc0\x00\xa0\xc0\x00 @\x80\xa0@\x80 \xc0\x80\xa0\xc0\x80`@\x00\xe0@\x00`\xc0\x00\xe0\xc0\x00`@\x80\xe0@\x80`\xc0\x80\xe0\xc0\x80 \x00@\xa0\x00@ \x80@\xa0\x80@ \x00\xc0\xa0\x00\xc0 \x80\xc0\xa0\x80\xc0`\x00@\xe0\x00@`\x80@\xe0\x80@`\x00\xc0\xe0\x00\xc0`\x80\xc0\xe0\x80\xc0 @@\xa0@@ \xc0@\xa0\xc0@ @\xc0\xa0@\xc0 \xc0\xc0\xa0\xc0\xc0`@@\xe0@@`\xc0@\xe0\xc0@`@\xc0\xe0@\xc0`\xc0\xc0\xe0\xc0\xc0\x00 \x00\x80 \x00\x00\xa0\x00\x80\xa0\x00\x00 \x80\x80 \x80\x00\xa0\x80\x80\xa0\x80@ \x00\xc0 \x00@\xa0\x00\xc0\xa0\x00@ \x80\xc0 \x80@\xa0\x80\xc0\xa0\x80\x00`\x00\x80`\x00\x00\xe0\x00\x80\xe0\x00\x00`\x80\x80`\x80\x00\xe0\x80\x80\xe0\x80@`\x00\xc0`\x00@\xe0\x00\xc0\xe0\x00@`\x80\xc0`\x80@\xe0\x80\xc0\xe0\x80\x00 @\x80 @\x00\xa0@\x80\xa0@\x00 \xc0\x80 \xc0\x00\xa0\xc0\x80\xa0\xc0@ @\xc0 @@\xa0@\xc0\xa0@@ \xc0\xc0 \xc0@\xa0\xc0\xc0\xa0\xc0\x00`@\x80`@\x00\xe0@\x80\xe0@\x00`\xc0\x80`\xc0\x00\xe0\xc0\x80\xe0\xc0@`@\xc0`@@\xe0@\xc0\xe0@@`\xc0\xc0`\xc0@\xe0\xc0\xc0\xe0\xc0  \x00\xa0 \x00 \xa0\x00\xa0\xa0\x00  \x80\xa0 \x80 \xa0\x80\xa0\xa0\x80` \x00\xe0 \x00`\xa0\x00\xe0\xa0\x00` \x80\xe0 \x80`\xa0\x80\xe0\xa0\x80 `\x00\xa0`\x00 \xe0\x00\xa0\xe0\x00 `\x80\xa0`\x80 \xe0\x80\xa0\xe0\x80``\x00\xe0`\x00`\xe0\x00\xe0\xe0\x00``\x80\xe0`\x80`\xe0\x80\xe0\xe0\x80  @\xa0 @ \xa0@\xa0\xa0@  \xc0\xa0 \xc0 \xa0\xc0\xa0\xa0\xc0` @\xe0 @`\xa0@\xe0\xa0@` \xc0\xe0 \xc0`\xa0\xc0\xe0\xa0\xc0 `@\xa0`@ \xe0@\xa0\xe0@ `\xc0\xa0`\xc0 \xe0\xc0\xa0\xe0\xc0``@\xe0`@`\xe0@\xe0\xe0@``\xc0\xe0`\xc0`\xe0\xc0\xe0\xe0\xc0"
@@ -328,6 +332,11 @@ def main():
         help="Specific sequence names to process (default: all)",
     )
     parser.add_argument(
+        "--use_frames_file",
+        action="store_true",
+        help="If set, use the sequence's frames.txt to select frames instead of fps subsampling",
+    )
+    parser.add_argument(
         "--apply_postprocessing",
         action="store_true",
     )
@@ -410,10 +419,73 @@ def main():
                 print(f"  [SKIP] Already processed")
                 continue
 
+        # Load sequence images/boxes. If requested, prefer frames.txt from
+        # the annotation folder instead of the dataset's fps-based subsampling.
         try:
-            images_ego, images_exo, boxes_ego, boxes_exo = dataset[idx]
+            if args.use_frames_file:
+                take_name = seq_name.split('*')[0]
+                resol_str = f"{args.resolution}" if args.resolution > 0 else ""
+                if args.mode == 'st':
+                    seq_name_parts = seq_name.split('$')
+                    st_sq_idx = seq_name_parts[-1]
+                    st_seq_name = seq_name_parts[0]
+                    keys_dir = os.path.join(
+                        args.anno_dir, args.mode, resol_str, 'takes', take_name, st_seq_name, 'frame_aligned_videos'
+                    )
+                else:
+                    keys_dir = os.path.join(
+                        args.anno_dir, args.mode, resol_str, 'takes', take_name, seq_name, 'frame_aligned_videos'
+                    )
+
+                keys = sorted(os.listdir(keys_dir))
+                ego_key = keys[0]
+                exo_key = keys[1]
+
+                if args.mode == 'st':
+                    files_dir_ego = os.path.join(
+                        args.anno_dir, args.mode, resol_str, 'takes', take_name, st_seq_name, 'frame_aligned_videos', f'{ego_key}', st_sq_idx
+                    )
+                    files_dir_exo = os.path.join(
+                        args.anno_dir, args.mode, resol_str, 'takes', take_name, st_seq_name, 'frame_aligned_videos', f'{exo_key}', st_sq_idx
+                    )
+                else:
+                    files_dir_ego = os.path.join(
+                        args.anno_dir, args.mode, resol_str, 'takes', take_name, seq_name, 'frame_aligned_videos', f'{ego_key}'
+                    )
+                    files_dir_exo = os.path.join(
+                        args.anno_dir, args.mode, resol_str, 'takes', take_name, seq_name, 'frame_aligned_videos', f'{exo_key}'
+                    )
+
+                frames_file_ego = os.path.join(files_dir_ego, 'frames.txt')
+                frames_file_exo = os.path.join(files_dir_exo, 'frames.txt')
+
+                if not os.path.exists(frames_file_ego) or not os.path.exists(frames_file_exo):
+                    raise FileNotFoundError(f"frames.txt not found: {frames_file_ego} or {frames_file_exo}")
+
+                frame_idxs_ego = np.genfromtxt(frames_file_ego, delimiter='\n', dtype=np.int64)
+                frame_idxs_exo = np.genfromtxt(frames_file_exo, delimiter='\n', dtype=np.int64)
+                frame_idxs_ego = np.atleast_1d(frame_idxs_ego).astype(np.int64)
+                frame_idxs_exo = np.atleast_1d(frame_idxs_exo).astype(np.int64)
+
+                boxes_ego = np.genfromtxt(os.path.join(files_dir_ego, 'boxes.txt'), delimiter=',')
+                boxes_exo = np.genfromtxt(os.path.join(files_dir_exo, 'boxes.txt'), delimiter=',')
+                boxes_ego = np.atleast_2d(boxes_ego)
+                boxes_exo = np.atleast_2d(boxes_exo)
+
+                images_ego = [
+                    os.path.join(args.frames_dir, f'{args.resolution}', 'takes', take_name, 'frame_aligned_videos', f'{ego_key}', f'{fi}.jpg')
+                    for fi in frame_idxs_ego
+                ]
+                images_exo = [
+                    os.path.join(args.frames_dir, f'{args.resolution}', 'takes', take_name, 'frame_aligned_videos', f'{exo_key}', f'{fi}.jpg')
+                    for fi in frame_idxs_exo
+                ]
+
+                print(f"  Using frames.txt: ego frames={len(images_ego)}, exo frames={len(images_exo)}")
+            else:
+                images_ego, images_exo, boxes_ego, boxes_exo = dataset[idx]
         except Exception as e:
-            print(f"  [ERROR] Failed to load sequence: {e}")
+            print(f"  [ERROR] Failed to load sequence (frames_file={args.use_frames_file}): {e}")
             import traceback
             traceback.print_exc()
             continue
