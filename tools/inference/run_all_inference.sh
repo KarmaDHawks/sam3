@@ -144,7 +144,7 @@ if [ -d "${EGOEXO4D_FRAMES}" ] && [ -d "${EGOEXO4D_ANNO}" ]; then
         --frames_dir "${EGOEXO4D_FRAMES}"   \
         --anno_dir "${EGOEXO4D_ANNO}"   \
         --output_dir "${EGOEXO4D_OUTPUT}"   \
-        --view "ego" \
+        --view "exo" \
         --use_frames_file
         "${EGOEXO4D_OUTPUT}"
 else

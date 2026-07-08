@@ -135,7 +135,9 @@ def free_inference_memory(predictor, inference_state):
 def run_inference_single_view(
     predictor,
     image_paths,
-    box_first_frame,
+    *,
+    box_first_frame=None,
+    mask_first_frame=None,
     output_dir,
     seq_name,
     view_name,
@@ -188,19 +190,40 @@ def run_inference_single_view(
         width = inference_state["video_width"]
         print(f"  [{view_name}] Video initialized: {width}x{height}")
 
-        # Convert box from xywh to xyxy (dataset boxes are xywh)
-        box_xyxy = xywh_to_xyxy(box_first_frame)
-        print(f"  [{view_name}] Box (xyxy): {box_xyxy}")
-
-        # Add box prompt on the first frame (use absolute coordinates)
+        # Try to initialize with a mask if provided, otherwise fallback to box
         obj_id = 1
-        predictor.add_new_points_or_box(
-            inference_state=inference_state,
-            frame_idx=0,
-            obj_id=obj_id,
-            box=box_xyxy,
-            rel_coordinates=False,
-        )
+        used_mask = False
+        if mask_first_frame is not None and os.path.exists(mask_first_frame):
+            try:
+                mask_img = Image.open(mask_first_frame).convert('L')
+                mask_arr = np.array(mask_img)
+                mask_bin = (mask_arr > 0).astype(np.float32)
+                mask_tensor = torch.from_numpy(mask_bin)
+                predictor.add_new_mask(
+                    inference_state=inference_state,
+                    frame_idx=0,
+                    obj_id=obj_id,
+                    mask=mask_tensor,
+                    add_mask_to_memory=False,
+                )
+                used_mask = True
+                print(f"  [{view_name}] Initialized with mask: {mask_first_frame}")
+            except Exception as e:
+                print(f"  [{view_name}] Failed to load/use mask {mask_first_frame}: {e}")
+
+        if not used_mask:
+            # Convert box from xywh to xyxy (dataset boxes are xywh) and fallback to box init
+            if box_first_frame is None:
+                raise RuntimeError("No initialization box or mask provided for inference")
+            box_xyxy = xywh_to_xyxy(box_first_frame)
+            print(f"  [{view_name}] Box (xyxy): {box_xyxy}")
+            predictor.add_new_points_or_box(
+                inference_state=inference_state,
+                frame_idx=0,
+                obj_id=obj_id,
+                box=box_xyxy,
+                rel_coordinates=False,
+            )
 
         # Run propagation and collect per-frame results
         print(f"  [{view_name}] Running propagation...")
@@ -230,7 +253,7 @@ def run_inference_single_view(
         for out_frame_idx, per_obj_output_mask in video_segments.items():
             save_masks_to_dir(
                 output_mask_dir=output_dir,
-                video_name=os.path.join(seq_name, view_name),
+                video_name=os.path.join(view_name, seq_name),
                 frame_name=frame_names[out_frame_idx],
                 per_obj_output_mask=per_obj_output_mask,
                 height=height,
@@ -241,7 +264,7 @@ def run_inference_single_view(
 
         # Free all inference state memory
         free_inference_memory(predictor, inference_state)
-        print(f"  [{view_name}] Done. Masks saved to {os.path.join(output_dir, seq_name, view_name)}")
+        print(f"  [{view_name}] Done. Masks saved to {os.path.join(output_dir, view_name, seq_name)}")
 
     finally:
         # Clean up temp directory
@@ -295,6 +318,12 @@ def main():
         "--resolution",
         type=int,
         default=720,
+    )
+    parser.add_argument(
+        "--masks_root",
+        type=str,
+        default=None,
+        help="Root directory containing exported masks (contains 'single-obj/<res>/takes/...'). If provided, masks will be used to initialize tracking; otherwise bbox init is used.",
     )
     parser.add_argument(
         "--mode",
@@ -367,7 +396,7 @@ def main():
     )
     print(f"Total available sequences: {len(dataset_all.seq_names)}")
     
-    # Expand patterns if seq_names provided
+    # Expand patterns if seq_names provided (initial candidate set)
     if args.seq_names is not None:
         print(f"\nPattern matching:")
         for pattern in args.seq_names:
@@ -377,13 +406,76 @@ def main():
             print(f"Expanded {len(args.seq_names)} pattern(s) to {len(expanded_names)} sequence(s):")
             for name in expanded_names:
                 print(f"  - {name}")
-            seq_names_to_use = expanded_names
+            candidate_seq_names = expanded_names
         else:
             print(f"WARNING: No sequences matched the provided patterns")
             print(f"Available sequences (first 10): {dataset_all.seq_names[:10]}")
-            seq_names_to_use = None
+            candidate_seq_names = None
     else:
-        seq_names_to_use = None
+        candidate_seq_names = None
+
+    # If masks_root is provided, prefer sequences that have exported masks there.
+    # We still rely on the dataset's annotation list for frame selection,
+    # so we intersect masks-derived sequences with `dataset_all.seq_names`.
+    if args.masks_root:
+        print("\nDetecting sequences available in masks_root...")
+        resol_str = f"{args.resolution}" if args.resolution > 0 else ""
+        # Prefer an explicit sequences.txt exported with the masks, if present
+        masks_seq_file = "/media/TBDataNAS/Egocentric Vision/EgoExo4D/v2/annotations/vot_ego_exo/sot/val/st/720/sequences.txt"
+        mask_seq_list = None
+        if os.path.exists(masks_seq_file):
+            try:
+                mask_seq_list = np.genfromtxt(masks_seq_file, delimiter='\n', dtype=str).tolist()
+                if isinstance(mask_seq_list, str):
+                    mask_seq_list = [mask_seq_list]
+                print(f"  Found {len(mask_seq_list)} sequences in masks sequences.txt")
+            except Exception:
+                mask_seq_list = None
+
+        # Fallback: scan the masks folder structure if no sequences.txt is available
+        if mask_seq_list is None:
+            masks_base = os.path.join(args.masks_root, 'single-obj', resol_str, 'takes')
+            mask_seq_candidates = []
+            if os.path.isdir(masks_base):
+                for take_name in sorted(os.listdir(masks_base)):
+                    take_path = os.path.join(masks_base, take_name)
+                    if not os.path.isdir(take_path):
+                        continue
+                    for seq_dir in sorted(os.listdir(take_path)):
+                        seq_dir_path = os.path.join(take_path, seq_dir)
+                        if not os.path.isdir(seq_dir_path):
+                            continue
+                        if args.mode == 'st':
+                            # For short-term, match by prefix to dataset seq naming
+                            for dsn in dataset_all.seq_names:
+                                if dsn.split('$')[0] == seq_dir:
+                                    mask_seq_candidates.append(dsn)
+                        else:
+                            mask_seq_candidates.append(seq_dir)
+
+            # Deduplicate while preserving order
+            seen = set()
+            mask_seq_list = []
+            for s in mask_seq_candidates:
+                if s not in seen:
+                    mask_seq_list.append(s)
+                    seen.add(s)
+            print(f"  Found {len(mask_seq_list)} sequences by scanning masks directory")
+
+        if len(mask_seq_list) == 0:
+            print(f"  WARNING: No sequences found under masks_root for resolution '{resol_str}'")
+
+        # Choose final seq_names_to_use depending on whether the user provided patterns
+        if candidate_seq_names is None:
+            seq_names_to_use = mask_seq_list if len(mask_seq_list) > 0 else None
+        else:
+            # Intersect pattern-based candidates with mask-available sequences (prefer mask ordering)
+            seq_names_to_use = [s for s in mask_seq_list if s in candidate_seq_names]
+            if not seq_names_to_use:
+                print("  WARNING: No sequences matched both provided patterns and masks_root content; falling back to mask-based selection")
+                seq_names_to_use = mask_seq_list
+    else:
+        seq_names_to_use = candidate_seq_names
     
     # Load EgoExo4D dataset with expanded sequence names
     dataset = EgoExo4D(
@@ -409,26 +501,36 @@ def main():
         print(f"\n[{idx + 1}/{len(dataset)}] Sequence: {seq_name}")
 
         # Check if already processed
-        ego_done = os.path.isdir(os.path.join(args.output_dir, seq_name, "ego"))
-        exo_done = os.path.isdir(os.path.join(args.output_dir, seq_name, "exo"))
+        ego_done = os.path.isdir(os.path.join(args.output_dir, "ego", seq_name))
+        exo_done = os.path.isdir(os.path.join(args.output_dir, "exo", seq_name))
         if ego_done and exo_done:
             # Check if there are already output masks
-            ego_masks = os.listdir(os.path.join(args.output_dir, seq_name, "ego"))
-            exo_masks = os.listdir(os.path.join(args.output_dir, seq_name, "exo"))
+            ego_masks = os.listdir(os.path.join(args.output_dir, "ego", seq_name))
+            exo_masks = os.listdir(os.path.join(args.output_dir, "exo", seq_name))
             if len(ego_masks) > 0 and len(exo_masks) > 0:
                 print(f"  [SKIP] Already processed")
                 continue
 
-        # Load sequence images/boxes. If requested, prefer frames.txt from
-        # the annotation folder instead of the dataset's fps-based subsampling.
+        # Load sequence images/boxes. For ST mode, always use the manual
+        # frames.txt/boxes.txt path construction, because EgoExo4D.__getitem__
+        # does not handle the nested ST subdirectory structure correctly.
+        # For LT mode, use frames.txt only when --use_frames_file is set.
         try:
-            if args.use_frames_file:
+            if args.use_frames_file or args.mode == 'st':
                 take_name = seq_name.split('*')[0]
                 resol_str = f"{args.resolution}" if args.resolution > 0 else ""
                 if args.mode == 'st':
-                    seq_name_parts = seq_name.split('$')
-                    st_sq_idx = seq_name_parts[-1]
-                    st_seq_name = seq_name_parts[0]
+                    # ST seq_name may come in two formats:
+                    #   (a) "<take>*<seq_name>$<st_idx>"  – from sequences.txt via vos_inference
+                    #   (b) "<take>*<seq_name>"           – from EgoExo4D dataset (no '$')
+                    # In case (b) we discover st_sq_idx by scanning the camera subdirectory.
+                    if '$' in seq_name:
+                        seq_name_parts = seq_name.split('$')
+                        st_sq_idx = seq_name_parts[-1]
+                        st_seq_name = seq_name_parts[0]
+                    else:
+                        st_seq_name = seq_name
+                        st_sq_idx = None  # will be resolved below after we know ego_key
                     keys_dir = os.path.join(
                         args.anno_dir, args.mode, resol_str, 'takes', take_name, st_seq_name, 'frame_aligned_videos'
                     )
@@ -442,6 +544,28 @@ def main():
                 exo_key = keys[1]
 
                 if args.mode == 'st':
+                    # Resolve st_sq_idx by scanning subdirs if not known from '$' split
+                    if st_sq_idx is None:
+                        ego_cam_dir = os.path.join(
+                            args.anno_dir, args.mode, resol_str, 'takes', take_name,
+                            st_seq_name, 'frame_aligned_videos', ego_key
+                        )
+                        sub_dirs = sorted([
+                            d for d in os.listdir(ego_cam_dir)
+                            if os.path.isdir(os.path.join(ego_cam_dir, d))
+                        ])
+                        if len(sub_dirs) == 0:
+                            raise FileNotFoundError(
+                                f"No ST subdirectory found under {ego_cam_dir}"
+                            )
+                        if len(sub_dirs) > 1:
+                            print(f"  [WARNING] Multiple ST subdirs found under {ego_cam_dir}: {sub_dirs}; using first: {sub_dirs[0]}")
+                        st_sq_idx = sub_dirs[0]
+                        print(f"  [ST] Resolved st_sq_idx='{st_sq_idx}' by scanning {ego_cam_dir}")
+
+                    # ST annotation structure:
+                    #   .../frame_aligned_videos/{camera_key}/{st_sq_idx}/frames.txt
+                    #   .../frame_aligned_videos/{camera_key}/{st_sq_idx}/boxes.txt
                     files_dir_ego = os.path.join(
                         args.anno_dir, args.mode, resol_str, 'takes', take_name, st_seq_name, 'frame_aligned_videos', f'{ego_key}', st_sq_idx
                     )
@@ -517,10 +641,31 @@ def main():
             if first_valid_ego is not None:
                 ego_images_subset = images_ego[first_valid_ego:]
                 ego_box = boxes_ego[first_valid_ego]
+                # try to find corresponding mask for the initialization frame
+                ego_mask_path = None
+                if args.masks_root is not None:
+                    try:
+                        resol_str = f"{args.resolution}" if args.resolution > 0 else ""
+                        take_name = seq_name.split('*')[0]
+                        if args.mode == 'st':
+                            st_seq_name = seq_name.split('$')[0]
+                            seq_dir = st_seq_name
+                        else:
+                            seq_dir = seq_name
+                        keys_dir = os.path.join(args.anno_dir, args.mode, resol_str, 'takes', take_name, seq_dir, 'frame_aligned_videos')
+                        keys = sorted(os.listdir(keys_dir))
+                        ego_key = keys[0]
+                        frame_name = os.path.splitext(os.path.basename(ego_images_subset[0]))[0]
+                        maybe_path = os.path.join(args.masks_root, 'single-obj', resol_str, 'takes', take_name, seq_dir, 'frame_aligned_videos', ego_key, f"{frame_name}.png")
+                        if os.path.exists(maybe_path):
+                            ego_mask_path = maybe_path
+                    except Exception:
+                        ego_mask_path = None
                 run_inference_single_view(
                     predictor=predictor,
                     image_paths=ego_images_subset,
                     box_first_frame=ego_box,
+                    mask_first_frame=ego_mask_path,
                     output_dir=args.output_dir,
                     seq_name=seq_name,
                     view_name="ego",
@@ -536,10 +681,30 @@ def main():
             if first_valid_exo is not None:
                 exo_images_subset = images_exo[first_valid_exo:]
                 exo_box = boxes_exo[first_valid_exo]
+                exo_mask_path = None
+                if args.masks_root is not None:
+                    try:
+                        resol_str = f"{args.resolution}" if args.resolution > 0 else ""
+                        take_name = seq_name.split('*')[0]
+                        if args.mode == 'st':
+                            st_seq_name = seq_name.split('$')[0]
+                            seq_dir = st_seq_name
+                        else:
+                            seq_dir = seq_name
+                        keys_dir = os.path.join(args.anno_dir, args.mode, resol_str, 'takes', take_name, seq_dir, 'frame_aligned_videos')
+                        keys = sorted(os.listdir(keys_dir))
+                        exo_key = keys[1]
+                        frame_name = os.path.splitext(os.path.basename(exo_images_subset[0]))[0]
+                        maybe_path = os.path.join(args.masks_root, 'single-obj', resol_str, 'takes', take_name, seq_dir, 'frame_aligned_videos', exo_key, f"{frame_name}.png")
+                        if os.path.exists(maybe_path):
+                            exo_mask_path = maybe_path
+                    except Exception:
+                        exo_mask_path = None
                 run_inference_single_view(
                     predictor=predictor,
                     image_paths=exo_images_subset,
                     box_first_frame=exo_box,
+                    mask_first_frame=exo_mask_path,
                     output_dir=args.output_dir,
                     seq_name=seq_name,
                     view_name="exo",
