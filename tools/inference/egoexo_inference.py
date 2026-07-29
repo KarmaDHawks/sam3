@@ -145,6 +145,7 @@ def run_inference_single_view(
     num_pathway=3,
     iou_thre=0.3,
     uncertainty=1,
+    invert_mask=False,
 ):
     """
     Run SAM2Long inference on a single view (ego or exo) of an EgoExo4D sequence.
@@ -198,6 +199,8 @@ def run_inference_single_view(
                 mask_img = Image.open(mask_first_frame).convert('L')
                 mask_arr = np.array(mask_img)
                 mask_bin = (mask_arr > 0).astype(np.float32)
+                if invert_mask:
+                    mask_bin = 1.0 - mask_bin
                 mask_tensor = torch.from_numpy(mask_bin)
                 predictor.add_new_mask(
                     inference_state=inference_state,
@@ -369,6 +372,11 @@ def main():
         "--apply_postprocessing",
         action="store_true",
     )
+    parser.add_argument(
+        "--invert_mask",
+        action="store_true",
+        help="If set, invert the input mask (swap background and target) before initializing tracking",
+    )
     args = parser.parse_args()
 
     # Build SAM3 model and predictor
@@ -421,7 +429,7 @@ def main():
         print("\nDetecting sequences available in masks_root...")
         resol_str = f"{args.resolution}" if args.resolution > 0 else ""
         # Prefer an explicit sequences.txt exported with the masks, if present
-        masks_seq_file = "/media/TBDataNAS/Egocentric Vision/EgoExo4D/v2/annotations/vot_ego_exo/sot/val/st/720/sequences.txt"
+        masks_seq_file = "/media/TBDataNAS/Egocentric Vision/EgoExo4D/v2/annotations/vot_ego_exo/sot/val/lt/720/sequences.txt"
         mask_seq_list = None
         if os.path.exists(masks_seq_file):
             try:
@@ -673,6 +681,7 @@ def main():
                     num_pathway=args.num_pathway,
                     iou_thre=args.iou_thre,
                     uncertainty=args.uncertainty,
+                    invert_mask=args.invert_mask,
                 )
             else:
                 print(f"  [SKIP] No valid ego box annotation found")
@@ -712,6 +721,7 @@ def main():
                     num_pathway=args.num_pathway,
                     iou_thre=args.iou_thre,
                     uncertainty=args.uncertainty,
+                    invert_mask=args.invert_mask,
                 )
             else:
                 print(f"  [SKIP] No valid exo box annotation found")
